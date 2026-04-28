@@ -17,17 +17,53 @@ model User {
   id             String           @id @default(uuid())
   email          String           @unique
   username       String           @unique
-  auth_hash      String
-  salt_mp        String // salt pour KEK_1 (mot de passe)
-  salt_rc        String // salt pour KEK_2 (recovery key)
+  auth_hash      String?          // null si auth uniquement via OIDC (sans mot de passe)
+  salt_mp        String?
+  salt_rc        String?
   pub_key        String           @unique
   priv_key_enc_1 String           @unique
   priv_key_enc_2 String           @unique
-  userTree       UserTree?
-  files          File[]
-  permissions    FilePermission[] @relation("UserPermissions")
-  grantedPerms   FilePermission[] @relation("GrantedPermissions")
-  editedVersions FileVersion[]
+
+  // Auth methods
+  totpSecret     String?          // secret TOTP pour OTP (null si non activé)
+  totpEnabled    Boolean          @default(false)
+
+  // Relations
+  oidcConnections OidcConnection[]
+  userTree        UserTree?
+  files           File[]
+  permissions     FilePermission[] @relation("UserPermissions")
+  grantedPerms    FilePermission[] @relation("GrantedPermissions")
+  editedVersions  FileVersion[]
+}
+
+// Un utilisateur peut avoir plusieurs connexions OIDC (Google, Rezel, etc.)
+model OidcConnection {
+  id             String    @id @default(uuid())
+  userId         String
+  provider       OidcProvider
+  providerUserId String    // sub claim du token OIDC
+  email          String?   // email retourné par le provider
+
+  // Tokens Google Drive (uniquement pour provider = GOOGLE)
+  accessToken    String?   // chiffré en base
+  refreshToken   String?   // chiffré en base
+  tokenExpiresAt DateTime?
+  driveScope     Boolean   @default(false) // true si le scope Drive a été accordé
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId]) // un compte provider = un seul lien
+  @@unique([userId, provider])         // un user ne peut lier qu'un compte par provider
+  @@index([userId])
+}
+
+enum OidcProvider {
+  GOOGLE
+  REZEL
 }
 
 model UserTree {
